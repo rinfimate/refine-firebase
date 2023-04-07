@@ -11,7 +11,7 @@
 ## Install
 
 ```bash
-npm i refine-firebase
+npm i @rinfimate/refine-firebase
 ```
 
 ## Usage
