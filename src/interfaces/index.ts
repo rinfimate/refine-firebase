@@ -1,5 +1,5 @@
-import { FirebaseAuth } from "../firebaseAuth";
-import { FirebaseDatabase } from "../firebaseDatabase";
+import { FirebaseAuth } from "../FirebaseAuth";
+import { FirebaseDatabase } from "../FirebaseDatabase";
 import { FirestoreDatabase } from "../FirestoreDatabase";
 import { FirebaseApp } from "@firebase/app";
 

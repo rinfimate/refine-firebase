@@ -1,4 +1,4 @@
-import { DataProvider } from "@pankod/refine-core";
+import { DataProvider } from "@refinedev/core";
 import { IDatabaseOptions } from "./interfaces";
 
 export abstract class BaseDatabase {

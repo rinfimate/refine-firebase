@@ -21,13 +21,7 @@ declare interface IUser extends Partial<User> {
     name?: string;
 }
 
-declare interface IAuthCallbacks {
-    onRegister?: (user: User) => void;
-    onLogin?: (user: User) => void;
-    onLogout?: (auth: Auth) => any;
-}
-
 declare type TLogoutData = void | false | string;
 
 
-export { ILoginArgs, IRegisterProps, IRegisterArgs, IUser, IAuthCallbacks, TLogoutData };
+export { ILoginArgs, IRegisterProps, IRegisterArgs, IUser, TLogoutData };

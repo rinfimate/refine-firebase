@@ -1,13 +1,12 @@
 import { FirebaseApp } from "@firebase/app";
-import { AuthProvider } from "@pankod/refine-core";
+import { AuthBindings } from "@refinedev/core";
 import { Auth, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, getAuth, getIdTokenResult, ParsedToken, RecaptchaParameters, RecaptchaVerifier, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateEmail, updatePassword, updateProfile, User as FirebaseUser } from "firebase/auth";
-import { IAuthCallbacks, ILoginArgs, IRegisterArgs, IUser } from "./interfaces";
+import { ILoginArgs, IRegisterArgs, IUser } from "./interfaces";
 
 export class FirebaseAuth {
     auth: Auth;
 
     constructor (
-        private readonly authActions?: IAuthCallbacks,
         firebaseApp?: FirebaseApp,
         auth?: Auth
     ) {
@@ -19,6 +18,7 @@ export class FirebaseAuth {
         this.handleRegister = this.handleRegister.bind(this);
         this.handleLogOut = this.handleLogOut.bind(this);
         this.handleResetPassword = this.handleResetPassword.bind(this);
+        this.onError = this.onError.bind(this);
         this.onUpdateUserData = this.onUpdateUserData.bind(this);
         this.getUserIdentity = this.getUserIdentity.bind(this);
         this.handleCheckAuth = this.handleCheckAuth.bind(this);
@@ -26,9 +26,52 @@ export class FirebaseAuth {
         this.getPermissions = this.getPermissions.bind(this);
     }
 
+    public async handleLogIn({ email, password, remember }: ILoginArgs) {
+        try {
+            if (this.auth) {
+                await this.auth.setPersistence(remember ? browserLocalPersistence : browserSessionPersistence);
+                const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
+                const userToken = await userCredential?.user?.getIdToken?.();
+                if (userToken) {
+                    return {
+                        success: true,
+                        redirectTo: "/",
+                    };
+                } else {
+                    return {
+                        success: false,
+                        error: {
+                            message: "Login Error",
+                            name: "Invalid email or password",
+                        }
+                    };
+                }
+            } else {
+                return {
+                    success: false,
+                    error: {
+                        message: "Login Error",
+                        name: "Missing email or password",
+                    }
+                };
+            }
+        } catch (error) {
+            return {
+                success: false,
+                error: {
+                    message: "Login Error",
+                    name: error.message,
+                }
+            };
+        }
+    }
+
     public async handleLogOut() {
         await signOut(this.auth);
-        await this.authActions?.onLogout?.(this.auth);
+        return {
+            success: true,
+            redirectTo: "/login",
+        };
     }
 
     public async handleRegister(args: IRegisterArgs) {
@@ -41,36 +84,38 @@ export class FirebaseAuth {
                 if (displayName) {
                     await updateProfile(userCredential.user, { displayName });
                 }
-                this.authActions?.onRegister?.(userCredential.user);
+                return {
+                    success: true,
+                    redirectTo: "/",
+                };
             }
-
         } catch (error) {
-            return Promise.reject(error);
+            return {
+                success: false,
+                error: {
+                    name: "Register Error",
+                    message: error.message,
+                },
+            };
         }
     }
 
-    public async handleLogIn({ email, password, remember }: ILoginArgs) {
+    public async handleResetPassword(email: string) {
         try {
-            if (this.auth) {
-                await this.auth.setPersistence(remember ? browserLocalPersistence : browserSessionPersistence);
-
-                const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
-                const userToken = await userCredential?.user?.getIdToken?.();
-                if (userToken) {
-                    this.authActions?.onLogin?.(userCredential.user);
-                } else {
-                    return Promise.reject();
-                }
-            } else {
-                return Promise.reject();
-            }
+            await sendPasswordResetEmail(this.auth, email);
+            return {
+                success: true,
+                redirectTo: "/login",
+           };
         } catch (error) {
-            return Promise.reject(error);
+            return {
+                success: false,
+                    error: {
+                        name: "Password Reset Error",
+                        message: error.message,
+                },
+            };
         }
-    }
-
-    public handleResetPassword(email: string) {
-        return sendPasswordResetEmail(this.auth, email);
     }
 
     public async onUpdateUserData(args: IRegisterArgs) {
@@ -81,27 +126,34 @@ export class FirebaseAuth {
                 if (password) {
                     await updatePassword(this.auth.currentUser, password);
                 }
-
                 if (email && this.auth.currentUser.email !== email) {
                     await updateEmail(this.auth.currentUser, email);
                 }
-
                 if (displayName && this.auth.currentUser.displayName !== displayName) {
                     await updateProfile(this.auth.currentUser, { displayName: displayName });
                 }
+                if(password) {
+                    return {
+                        success: true,
+                        redirectTo: "/login",
+                    };
+                }
+                else {
+                    return {
+                        success: true,
+                        redirectTo: "/",
+                    };
+                }
             }
         } catch (error) {
-            return Promise.reject(error);
+            return {
+                success: false,
+                error: {
+                    name: "Update User Data",
+                    message: error.message,
+                },
+            };
         }
-    }
-
-    private async getUserIdentity(): Promise<IUser> {
-        const user = this.auth?.currentUser;
-        return {
-            ...this.auth.currentUser,
-            email: user?.email || "",
-            name: user?.displayName || ""
-        };
     }
 
     private getFirebaseUser(): Promise<FirebaseUser> {
@@ -115,10 +167,28 @@ export class FirebaseAuth {
 
     private async handleCheckAuth() {
         if (await this.getFirebaseUser()) {
-            return Promise.resolve();
+            return {
+                authenticated: true,
+            };
         } else {
-            return Promise.reject("User is not found");
+            return {
+                authenticated: false,
+                redirectTo: "/login",
+                logout: true,
+                error: {
+                    message: "Check failed",
+                    name: "User not found",
+                }
+            };
         }
+    }
+
+    private async onError(error: any) {
+        return {
+            redirectTo: "/login",
+            logout: true,
+            error: error,
+        };
     }
 
     public async getPermissions(): Promise<ParsedToken> {
@@ -126,22 +196,36 @@ export class FirebaseAuth {
             const idTokenResult = await getIdTokenResult(this.auth.currentUser);
             return idTokenResult?.claims;
         } else {
-            return Promise.reject("User is not found");
+            return null;
         }
+    }
+
+    private async getUserIdentity(): Promise<IUser> {
+        const user = this.auth?.currentUser;
+        if(user) {
+            return {
+                ...this.auth.currentUser,
+                email: user?.email || "",
+                name: user?.displayName || ""
+            };
+        } else {
+            return null;
+        }
+        
     }
 
     public createRecaptcha(containerOrId: string | HTMLDivElement, parameters?: RecaptchaParameters) {
         return new RecaptchaVerifier(containerOrId, parameters, this.auth);
     }
 
-    public getAuthProvider(): AuthProvider {
+    public getAuthProvider(): AuthBindings {
         return {
             login: this.handleLogIn,
             logout: this.handleLogOut,
-            checkAuth: this.handleCheckAuth,
-            checkError: () => Promise.resolve(),
+            check: this.handleCheckAuth,
+            onError: this.onError,
             getPermissions: this.getPermissions,
-            getUserIdentity: this.getUserIdentity,
+            getIdentity: this.getUserIdentity,
         };
     }
 }

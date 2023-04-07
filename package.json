@@ -1,16 +1,16 @@
 {
-  "name": "refine-firebase",
-  "version": "1.1.1",
+  "name": "@rinfimate/refine-firebase",
+  "version": "1.1.2",
   "description": "Firebase Tool for Refine",
   "main": "lib/index.js",
-  "author": "Resul TURAN",
+  "author": "r.infimate@gmail.com",
   "license": "MIT",
   "keywords": [
     "Refine",
     "Firebase"
   ],
   "devDependencies": {
-    "@pankod/refine-core": "^3.95.3",
+    "@refinedev/core": "^4.7.2",
     "@types/uuid": "^8.3.1",
     "typescript": "^4.9.4"
   },
@@ -19,7 +19,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "firebase": "^9.16.0",
+    "firebase": "^9.19.1",
     "uuid": "^9.0.0"
   },
   "files": [
@@ -27,6 +27,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/rturan29/refine-firebase.git"
+    "url": "https://github.com/rinfimate/refine-firebase.git"
   }
 }
