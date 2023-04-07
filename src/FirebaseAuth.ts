@@ -100,21 +100,24 @@ export class FirebaseAuth {
         }
     }
 
-    public async handleResetPassword(email: string) {
-        try {
-            await sendPasswordResetEmail(this.auth, email);
-            return {
-                success: true,
-                redirectTo: "/login",
-           };
-        } catch (error) {
-            return {
-                success: false,
-                    error: {
-                        name: "Password Reset Error",
-                        message: error.message,
-                },
+    public async handleResetPassword(params: { email: string;}) {
+        const { email } = params;
+        if(email) {
+            try {
+                await sendPasswordResetEmail(this.auth, email);
+                return {
+                    success: true,
+                    redirectTo: "/login",
             };
+            } catch (error) {
+                return {
+                    success: false,
+                        error: {
+                            name: "Password Reset Error",
+                            message: error.message,
+                    },
+                };
+            }
         }
     }
 
@@ -222,6 +225,7 @@ export class FirebaseAuth {
         return {
             login: this.handleLogIn,
             logout: this.handleLogOut,
+            forgotPassword: this.handleResetPassword,
             check: this.handleCheckAuth,
             onError: this.onError,
             getPermissions: this.getPermissions,
