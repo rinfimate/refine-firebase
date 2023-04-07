@@ -1,4 +1,4 @@
-import { Auth, User } from "firebase/auth";
+import { Auth } from "firebase/auth";
 
 declare interface ILoginArgs {
     email: string;
@@ -16,12 +16,7 @@ declare interface IRegisterArgs extends ILoginArgs {
     displayName?: string;
 }
 
-declare interface IUser extends Partial<User> {
-    email: string;
-    name?: string;
-}
-
 declare type TLogoutData = void | false | string;
 
 
-export { ILoginArgs, IRegisterProps, IRegisterArgs, IUser, TLogoutData };
+export { ILoginArgs, IRegisterProps, IRegisterArgs, TLogoutData };

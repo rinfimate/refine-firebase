@@ -1,7 +1,7 @@
 import { FirebaseApp } from "@firebase/app";
 import { AuthBindings } from "@refinedev/core";
 import { Auth, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, getAuth, getIdTokenResult, ParsedToken, RecaptchaParameters, RecaptchaVerifier, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateEmail, updatePassword, updateProfile, User as FirebaseUser } from "firebase/auth";
-import { ILoginArgs, IRegisterArgs, IUser } from "./interfaces";
+import { ILoginArgs, IRegisterArgs } from "./interfaces";
 
 export class FirebaseAuth {
     auth: Auth;
@@ -203,13 +203,14 @@ export class FirebaseAuth {
         }
     }
 
-    private async getUserIdentity(): Promise<IUser> {
+    private async getUserIdentity() {
         const user = this.auth?.currentUser;
         if(user) {
             return {
                 ...this.auth.currentUser,
-                email: user?.email || "",
-                name: user?.displayName || ""
+                id: user?.email || "",
+                name: user?.displayName || "",
+                avatar: user?.photoURL || ""
             };
         } else {
             return null;
