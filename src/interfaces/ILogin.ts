@@ -4,6 +4,7 @@ declare interface ILoginArgs {
     email: string;
     password: string;
     remember: boolean;
+    tenant?: string;
 }
 
 

@@ -26,9 +26,12 @@ export class FirebaseAuth {
         this.getPermissions = this.getPermissions.bind(this);
     }
 
-    public async handleLogIn({ email, password, remember }: ILoginArgs) {
+    public async handleLogIn({ email, password, remember, tenant }: ILoginArgs) {
         try {
             if (this.auth) {
+                if(tenant) {
+                    this.auth.tenantId = tenant;
+                }
                 await this.auth.setPersistence(remember ? browserLocalPersistence : browserSessionPersistence);
                 const userCredential = await signInWithEmailAndPassword(this.auth, email, password);
                 const userToken = await userCredential?.user?.getIdToken?.();
