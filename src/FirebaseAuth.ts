@@ -1,7 +1,7 @@
 import { FirebaseApp } from "@firebase/app";
 import { AuthBindings } from "@refinedev/core";
-import { Auth, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, getAuth, getIdTokenResult, ParsedToken, RecaptchaParameters, RecaptchaVerifier, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, updateEmail, updatePassword, updateProfile, User as FirebaseUser } from "firebase/auth";
-import { ILoginArgs, IRegisterArgs } from "./interfaces";
+import { Auth, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, getAuth, getIdTokenResult, ParsedToken, RecaptchaParameters, RecaptchaVerifier, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPhoneNumber, signOut, updateEmail, updatePassword, updateProfile, ConfirmationResult, User as FirebaseUser } from "firebase/auth";
+import { ILoginArgs, IPhoneOTPRequestArgs, IPhoneOTPLoginArgs, IRegisterArgs } from "./interfaces";
 
 export class FirebaseAuth {
     auth: Auth;
@@ -15,12 +15,15 @@ export class FirebaseAuth {
 
         this.getAuthProvider = this.getAuthProvider.bind(this);
         this.handleLogIn = this.handleLogIn.bind(this);
+        this.requestOtp = this.requestOtp.bind(this);
+        this.handlePhoneOTPLogIn = this.handlePhoneOTPLogIn.bind(this);
         this.handleRegister = this.handleRegister.bind(this);
         this.handleLogOut = this.handleLogOut.bind(this);
         this.handleResetPassword = this.handleResetPassword.bind(this);
         this.onError = this.onError.bind(this);
         this.onUpdateUserData = this.onUpdateUserData.bind(this);
         this.getUserIdentity = this.getUserIdentity.bind(this);
+        this.getPhoneUserIdentity = this.getPhoneUserIdentity.bind(this);
         this.handleCheckAuth = this.handleCheckAuth.bind(this);
         this.createRecaptcha = this.createRecaptcha.bind(this);
         this.getPermissions = this.getPermissions.bind(this);
@@ -54,7 +57,62 @@ export class FirebaseAuth {
                     success: false,
                     error: {
                         message: "Login Error",
-                        name: "Missing email or password",
+                        name: "Authentication provider not found",
+                    }
+                };
+            }
+        } catch (error) {
+            return {
+                success: false,
+                error: {
+                    message: "Login Error",
+                    name: error.message,
+                }
+            };
+        }
+    }
+
+    public async requestOtp({ phone, recaptchaContainer }: IPhoneOTPRequestArgs) : Promise<ConfirmationResult> {
+        if (this.auth) {
+            try {
+                let verify = this.createRecaptcha(recaptchaContainer);
+                const otpRequestResult = await signInWithPhoneNumber(this.auth, phone, verify);
+                return otpRequestResult;
+            } catch(error){
+                return null;
+            }
+        }
+        else {
+            return null;
+        }
+    }
+
+    public async handlePhoneOTPLogIn({ otpRequestResult, otp, remember }: IPhoneOTPLoginArgs) {
+        try {
+            if (this.auth) {
+                await this.auth.setPersistence(remember ? browserLocalPersistence : browserSessionPersistence);
+                const userCredential = await otpRequestResult.confirm(otp);
+                const userToken = await userCredential?.user?.getIdToken?.();
+                if (userToken) {
+                    return {
+                        success: true,
+                        redirectTo: "/",
+                    };
+                } else {
+                    return {
+                        success: false,
+                        error: {
+                            message: "Login Error",
+                            name: "Invalid OTP",
+                        }
+                    };
+                }
+            } else {
+                return {
+                    success: false,
+                    error: {
+                        message: "Login Error",
+                        name: "Authentication provider not found",
                     }
                 };
             }
@@ -162,16 +220,7 @@ export class FirebaseAuth {
         }
     }
 
-    private getFirebaseUser(): Promise<FirebaseUser> {
-        return new Promise<FirebaseUser>((resolve, reject) => {
-            const unsubscribe = this.auth?.onAuthStateChanged(user => {
-                unsubscribe();
-                resolve(user as FirebaseUser | PromiseLike<FirebaseUser>);
-            }, reject);
-        });
-    }
-
-    private async handleCheckAuth() {
+    public async handleCheckAuth() {
         if (await this.getFirebaseUser()) {
             return {
                 authenticated: true,
@@ -189,7 +238,7 @@ export class FirebaseAuth {
         }
     }
 
-    private async onError(error: any) {
+    public async onError(error: any) {
         return {
             redirectTo: "/login",
             logout: true,
@@ -206,7 +255,7 @@ export class FirebaseAuth {
         }
     }
 
-    private async getUserIdentity() {
+    public async getUserIdentity() {
         const user = this.auth?.currentUser;
         if(user) {
             return {
@@ -218,14 +267,31 @@ export class FirebaseAuth {
         } else {
             return null;
         }
-        
     }
 
-    public createRecaptcha(containerOrId: string | HTMLDivElement, parameters?: RecaptchaParameters) {
+    public async getPhoneUserIdentity() {
+        const user = this.auth?.currentUser;
+        if(user) {
+            return {
+                ...this.auth.currentUser,
+                id: user?.phoneNumber || "",
+                name: user?.displayName || "",
+                avatar: user?.photoURL || ""
+            };
+        } else {
+            return null;
+        }
+    }
+
+    public async getAuthObject() {
+        return this.auth;
+    }
+
+    private createRecaptcha(containerOrId: string | HTMLDivElement, parameters?: RecaptchaParameters) {
         return new RecaptchaVerifier(containerOrId, parameters, this.auth);
     }
 
-    public getAuthProvider(): AuthBindings {
+    public getAuthProvider(): FirebaseAuthBindings {
         return {
             login: this.handleLogIn,
             logout: this.handleLogOut,
@@ -234,6 +300,39 @@ export class FirebaseAuth {
             onError: this.onError,
             getPermissions: this.getPermissions,
             getIdentity: this.getUserIdentity,
+            getAuthObject: this.getAuthObject,
         };
     }
+
+    public getPhoneOTPAuthProvider(): FirebasePhoneAuthBindings {
+        return {
+            login: this.handlePhoneOTPLogIn,
+            logout: this.handleLogOut,
+            check: this.handleCheckAuth,
+            onError: this.onError,
+            getIdentity: this.getPhoneUserIdentity,
+            requestOtp: this.requestOtp,
+            getAuthObject: this.getAuthObject,
+        };
+    }
+
+    private getFirebaseUser(): Promise<FirebaseUser> {
+        return new Promise<FirebaseUser>((resolve, reject) => {
+            const unsubscribe = this.auth?.onAuthStateChanged(user => {
+                unsubscribe();
+                resolve(user as FirebaseUser | PromiseLike<FirebaseUser>);
+            }, reject);
+        });
+    }
 }
+
+export type FirebaseAuthBindings = AuthBindings & {
+    // Custom Functions
+    getAuthObject: () => Promise<Auth>;
+};
+
+export type FirebasePhoneAuthBindings = AuthBindings & {
+    // Custom Functions
+    getAuthObject: () => Promise<Auth>;
+    requestOtp: (arg: IPhoneOTPRequestArgs) => Promise<ConfirmationResult>;
+};

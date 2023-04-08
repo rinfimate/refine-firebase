@@ -1,6 +1,6 @@
 {
   "name": "@rinfimate/refine-firebase",
-  "version": "1.1.8",
+  "version": "1.1.11",
   "description": "Firebase Tool for Refine",
   "main": "lib/index.js",
   "author": "r.infimate@gmail.com",
