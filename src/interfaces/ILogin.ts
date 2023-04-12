@@ -1,4 +1,4 @@
-import { Auth, ConfirmationResult } from "firebase/auth";
+import { Auth, ConfirmationResult, RecaptchaParameters } from "firebase/auth";
 
 declare interface ILoginArgs {
     email: string;
@@ -11,6 +11,7 @@ declare interface ILoginArgs {
 declare interface IPhoneOTPRequestArgs {
     phone: string;
     recaptchaContainer: string;
+    recaptchaParameters?: RecaptchaParameters;
 }
 
 declare interface IPhoneOTPLoginArgs {

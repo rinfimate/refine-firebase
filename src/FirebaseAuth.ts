@@ -6,7 +6,7 @@ import { ILoginArgs, IPhoneOTPRequestArgs, IPhoneOTPLoginArgs, IRegisterArgs } f
 export class FirebaseAuth {
     auth: Auth;
 
-    constructor (
+    constructor(
         firebaseApp?: FirebaseApp,
         auth?: Auth
     ) {
@@ -32,7 +32,7 @@ export class FirebaseAuth {
     public async handleLogIn({ email, password, remember, tenant }: ILoginArgs) {
         try {
             if (this.auth) {
-                if(tenant) {
+                if (tenant) {
                     this.auth.tenantId = tenant;
                 }
                 await this.auth.setPersistence(remember ? browserLocalPersistence : browserSessionPersistence);
@@ -72,13 +72,13 @@ export class FirebaseAuth {
         }
     }
 
-    public async requestOtp({ phone, recaptchaContainer }: IPhoneOTPRequestArgs) : Promise<ConfirmationResult> {
+    public async requestOtp({ phone, recaptchaContainer, recaptchaParameters }: IPhoneOTPRequestArgs): Promise<ConfirmationResult> {
         if (this.auth) {
             try {
-                let verify = this.createRecaptcha(recaptchaContainer);
+                let verify = this.createRecaptcha(recaptchaContainer, recaptchaParameters);
                 const otpRequestResult = await signInWithPhoneNumber(this.auth, phone, verify);
                 return otpRequestResult;
-            } catch(error){
+            } catch (error) {
                 return null;
             }
         }
@@ -161,21 +161,21 @@ export class FirebaseAuth {
         }
     }
 
-    public async handleResetPassword(params: { email: string;}) {
+    public async handleResetPassword(params: { email: string; }) {
         const { email } = params;
-        if(email) {
+        if (email) {
             try {
                 await sendPasswordResetEmail(this.auth, email);
                 return {
                     success: true,
                     redirectTo: "/login",
-            };
+                };
             } catch (error) {
                 return {
                     success: false,
-                        error: {
-                            name: "Password Reset Error",
-                            message: error.message,
+                    error: {
+                        name: "Password Reset Error",
+                        message: error.message,
                     },
                 };
             }
@@ -196,7 +196,7 @@ export class FirebaseAuth {
                 if (displayName && this.auth.currentUser.displayName !== displayName) {
                     await updateProfile(this.auth.currentUser, { displayName: displayName });
                 }
-                if(password) {
+                if (password) {
                     return {
                         success: true,
                         redirectTo: "/login",
@@ -257,7 +257,7 @@ export class FirebaseAuth {
 
     public async getUserIdentity() {
         const user = this.auth?.currentUser;
-        if(user) {
+        if (user) {
             return {
                 ...this.auth.currentUser,
                 id: user?.email || "",
@@ -271,7 +271,7 @@ export class FirebaseAuth {
 
     public async getPhoneUserIdentity() {
         const user = this.auth?.currentUser;
-        if(user) {
+        if (user) {
             return {
                 ...this.auth.currentUser,
                 id: user?.phoneNumber || "",
