@@ -14,3 +14,4 @@ export { IRefineFirebase };
 export * from "./IDataBase";
 export * from "./ILogin";
 export * from "./IDataContext";
+export * from "./IFile";

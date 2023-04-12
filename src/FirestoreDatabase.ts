@@ -1,19 +1,22 @@
 import { Firestore, getDocs, getFirestore, collection, addDoc, doc, getDoc, updateDoc, deleteDoc, where, query, CollectionReference, DocumentData, Query, orderBy } from "firebase/firestore";
+import { FirebaseStorage, getDownloadURL, uploadBytes, ref as sRef, getStorage } from "firebase/storage";
 import { ICreateData, IDeleteData, IDeleteManyData, IGetList, IGetMany, IGetOne, IDatabaseOptions, IUpdateData, IUpdateManyData, CrudOperators } from "./interfaces";
 import { BaseDatabase } from "./Database";
-
+import { FirebaseFile } from "./interfaces";
 
 export class FirestoreDatabase extends BaseDatabase {
     database: Firestore;
+    storage: FirebaseStorage;
 
-    constructor (options?: IDatabaseOptions, database?: Firestore) {
+    constructor(options?: IDatabaseOptions, database?: Firestore, storage?: FirebaseStorage) {
         super(options);
         this.database = database || getFirestore(options?.firebaseApp);
-
+        this.storage = storage || getStorage(options?.firebaseApp);
         this.getCollectionRef = this.getCollectionRef.bind(this);
         this.getFilterQuery = this.getFilterQuery.bind(this);
+        this.transform = this.transform.bind(this);
+        this.uploadFiles = this.uploadFiles.bind(this);
     }
-
 
     getCollectionRef(resource: string) {
         return collection(this.database, resource);
@@ -43,18 +46,83 @@ export class FirestoreDatabase extends BaseDatabase {
         }
     }
 
+    transform(variables: any, meta: any) {
+        if (meta?.files) {
+            const originalVariables = variables;
+            const transformedVariables: any = {};
+            for (var fieldName in originalVariables) {
+                const fieldValue = originalVariables[fieldName];
+                if (!meta?.files.includes(fieldName)) {
+                    transformedVariables[fieldName] = fieldValue;
+                }
+            }
+            return transformedVariables;
+        }
+        else {
+            return variables;
+        }
+    }
+
+    async uploadFiles(variables: any, resource: string, meta: any, docId: string, obj: FirestoreDatabase) {
+        const originalVariables = variables;
+        const uploadFilesVariables: any = [];
+        if (meta?.files) {
+            for (var fieldName in originalVariables) {
+                const fieldValue = originalVariables[fieldName];
+                if (fieldValue) {
+                    if (meta?.files.includes(fieldName)) {
+                        uploadFilesVariables.push({ fieldName: fieldName, fieldValue: fieldValue });
+                    }
+                }
+            }
+        }
+        const uploadFilesTransformedVariables: any = {};
+        await Promise.all(
+            uploadFilesVariables.map(async ({ fieldName, fieldValue }) => {
+                let uploadFilesTransformedVariablesList: any = [];
+                for (let i = 0; i < fieldValue.length; i++) {
+                    const itemFirebaseFile = <FirebaseFile>fieldValue[i];
+                    const storageRef = sRef(obj.storage);
+                    const fileName = `${resource}/${docId}/${fieldName}/${itemFirebaseFile.name}`;
+                    const fileRef = sRef(storageRef, fileName);
+                    const result = await uploadBytes(fileRef, itemFirebaseFile.file);
+                    const downloadURL = await getDownloadURL(result.ref);
+                    const transformedValueItem = {
+                        src: downloadURL,
+                        title: itemFirebaseFile?.title ? itemFirebaseFile?.title : itemFirebaseFile.name,
+                        fileName: fileName,
+                        uploadedAt: Date.now(),
+                    };
+                    uploadFilesTransformedVariablesList.push(transformedValueItem)
+                }
+                uploadFilesTransformedVariables[fieldName] = uploadFilesTransformedVariablesList;
+            })
+        );
+        return uploadFilesTransformedVariables;
+    }
+
     async createData<TVariables = {}>(args: ICreateData<TVariables>): Promise<any> {
         try {
             const ref = this.getCollectionRef(args.resource);
-            const payload = this.requestPayloadFactory(args.resource, args.variables);
-
+            const payload = this.requestPayloadFactory(args.resource, this.transform(args.variables, args.metaData));
             const docRef = await addDoc(ref, payload);
-
-            let data = {
-                id: docRef.id,
-                ...payload
-            };
-
+            let data: any;
+            if (args.metaData?.files) {
+                // File upload handler
+                const uploadFilesVariables = await this.uploadFiles(args.variables, args.resource, args.metaData, docRef.id, this);
+                await updateDoc(docRef, uploadFilesVariables);
+                data = {
+                    id: docRef.id,
+                    ...payload,
+                    ...uploadFilesVariables,
+                };
+            }
+            else {
+                data = {
+                    id: docRef.id,
+                    ...payload,
+                };
+            }
             return { data };
         } catch (error) {
             Promise.reject(error);
