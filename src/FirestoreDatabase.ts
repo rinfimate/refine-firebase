@@ -1,5 +1,5 @@
 import { Firestore, getDocs, getFirestore, collection, addDoc, doc, getDoc, updateDoc, deleteDoc, where, query, CollectionReference, DocumentData, Query, orderBy } from "firebase/firestore";
-import { FirebaseStorage, getDownloadURL, uploadBytes, ref as sRef, getStorage } from "firebase/storage";
+import { FirebaseStorage, getDownloadURL, uploadBytes, getStorage, deleteObject, listAll, ref as sRef } from "firebase/storage";
 import { ICreateData, IDeleteData, IDeleteManyData, IGetList, IGetMany, IGetOne, IDatabaseOptions, IUpdateData, IUpdateManyData, CrudOperators } from "./interfaces";
 import { BaseDatabase } from "./Database";
 import { FirebaseFile } from "./interfaces";
@@ -83,12 +83,12 @@ export class FirestoreDatabase extends BaseDatabase {
                 for (let i = 0; i < fieldValue.length; i++) {
                     const itemFirebaseFile = <FirebaseFile>fieldValue[i];
                     const storageRef = sRef(obj.storage);
-                    const fileName = `${resource}/${docId}/${fieldName}/${itemFirebaseFile.name}`;
+                    const fileName = `${resource}/${docId}/${fieldName}-${itemFirebaseFile.name}`;
                     const fileRef = sRef(storageRef, fileName);
                     const result = await uploadBytes(fileRef, itemFirebaseFile.file);
                     const downloadURL = await getDownloadURL(result.ref);
                     const transformedValueItem = {
-                        src: downloadURL,
+                        url: downloadURL,
                         title: itemFirebaseFile?.title ? itemFirebaseFile?.title : itemFirebaseFile.name,
                         fileName: fileName,
                         uploadedAt: Date.now(),
@@ -99,6 +99,32 @@ export class FirestoreDatabase extends BaseDatabase {
             })
         );
         return uploadFilesTransformedVariables;
+    }
+
+    async deleteFiles(filesToDelete: any, firebaseStorage: FirebaseStorage) {
+        if (filesToDelete) {
+            for (let i = 0; i < filesToDelete.length; i++) {
+                let fileToDelete = filesToDelete[i];
+                const storageRef = sRef(firebaseStorage);
+                const fileRef = sRef(storageRef, fileToDelete);
+                await deleteObject(fileRef);
+            }
+        }
+    }
+
+    async deleteFolder(resource: string, docId: string, firebaseStorage: FirebaseStorage) {
+        const folderName = `${resource}/${docId}`;
+        const folderRef = sRef(firebaseStorage, folderName);
+        const storageRefsToDelete = (await listAll(folderRef)).items;
+        const filesToDelete = storageRefsToDelete.map((file) => file.fullPath);
+        if (filesToDelete) {
+            for (let i = 0; i < filesToDelete.length; i++) {
+                let fileToDelete = filesToDelete[i];
+                const storageRef = sRef(firebaseStorage);
+                const fileRef = sRef(storageRef, fileToDelete);
+                await deleteObject(fileRef);
+            }
+        }
     }
 
     async createData<TVariables = {}>(args: ICreateData<TVariables>): Promise<any> {
@@ -142,8 +168,13 @@ export class FirestoreDatabase extends BaseDatabase {
     async deleteData(args: IDeleteData): Promise<any> {
         try {
             const ref = this.getDocRef(args.resource, args.id);
-
             await deleteDoc(ref);
+            try {
+                await this.deleteFolder(args.resource, args.id, this.storage);
+            }
+            catch (error) {
+                //No op;
+            }
         } catch (error) {
             Promise.reject(error);
         }
@@ -221,12 +252,23 @@ export class FirestoreDatabase extends BaseDatabase {
 
     async updateData<TVariables = {}>(args: IUpdateData<TVariables>): Promise<any> {
         try {
+            let data: any = { data: args.variables };
             if (args.id && args.resource) {
                 var ref = this.getDocRef(args.resource, args.id);
-                await updateDoc(ref, this.requestPayloadFactory(args.resource, args.variables));
+                await updateDoc(ref, this.requestPayloadFactory(args.resource, this.transform(args.variables, args.metaData)));
+                if (args.metaData?.files) {
+                    // File upload handler
+                    const uploadFilesVariables = await this.uploadFiles(args.variables, args.resource, args.metaData, ref.id, this);
+                    await updateDoc(ref, uploadFilesVariables);
+                    data = {
+                        ...uploadFilesVariables,
+                    };
+                }
+                if (args.metaData?.filesToDelete) {
+                    await this.deleteFiles(args.metaData?.filesToDelete, this.storage);
+                }
             }
-
-            return { data: args.variables };
+            return data;
         } catch (error) {
             Promise.reject(error);
         }
