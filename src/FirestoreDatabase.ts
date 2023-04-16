@@ -8,7 +8,11 @@ export class FirestoreDatabase extends BaseDatabase {
     database: Firestore;
     storage: FirebaseStorage;
 
-    constructor(options?: IDatabaseOptions, database?: Firestore, storage?: FirebaseStorage) {
+    constructor(
+        options?: IDatabaseOptions,
+        database?: Firestore,
+        storage?: FirebaseStorage
+    ) {
         super(options);
         this.database = database || getFirestore(options?.firebaseApp);
         this.storage = storage || getStorage(options?.firebaseApp);
@@ -16,6 +20,8 @@ export class FirestoreDatabase extends BaseDatabase {
         this.getFilterQuery = this.getFilterQuery.bind(this);
         this.transform = this.transform.bind(this);
         this.uploadFiles = this.uploadFiles.bind(this);
+        this.deleteFiles = this.deleteFiles.bind(this);
+        this.deleteFolder = this.deleteFolder.bind(this);
     }
 
     getCollectionRef(resource: string) {
@@ -26,13 +32,19 @@ export class FirestoreDatabase extends BaseDatabase {
         return doc(this.database, resource, id);
     }
 
-    getFilterQuery({ resource, sort, filters }: IGetList): (CollectionReference<DocumentData> | Query<DocumentData>) {
+    getFilterQuery({
+        resource,
+        sort,
+        filters,
+    }: IGetList): CollectionReference<DocumentData> | Query<DocumentData> {
         const ref = this.getCollectionRef(resource);
-        let queryFilter = filters?.map(filter => {
+        let queryFilter = filters?.map((filter) => {
             const operator = getFilterOperator(filter.operator);
             return where(filter.field, operator, filter.value);
         });
-        let querySorter = sort?.map(sorter => orderBy(sorter.field, sorter.order));
+        let querySorter = sort?.map((sorter) =>
+            orderBy(sorter.field, sorter.order)
+        );
 
         if (queryFilter?.length && querySorter?.length) {
             return query(ref, ...queryFilter, ...querySorter);
@@ -40,8 +52,7 @@ export class FirestoreDatabase extends BaseDatabase {
             return query(ref, ...queryFilter);
         } else if (querySorter?.length) {
             return query(ref, ...querySorter);
-        }
-        else {
+        } else {
             return ref;
         }
     }
@@ -57,13 +68,18 @@ export class FirestoreDatabase extends BaseDatabase {
                 }
             }
             return transformedVariables;
-        }
-        else {
+        } else {
             return variables;
         }
     }
 
-    async uploadFiles(variables: any, resource: string, meta: any, docId: string, obj: FirestoreDatabase) {
+    async uploadFiles(
+        variables: any,
+        resource: string,
+        meta: any,
+        docId: string,
+        firebaseStorage: FirebaseStorage
+    ) {
         const originalVariables = variables;
         const uploadFilesVariables: any = [];
         if (meta?.files) {
@@ -71,7 +87,10 @@ export class FirestoreDatabase extends BaseDatabase {
                 const fieldValue = originalVariables[fieldName];
                 if (fieldValue) {
                     if (meta?.files.includes(fieldName)) {
-                        uploadFilesVariables.push({ fileFieldName: fieldName, filefieldValues: fieldValue });
+                        uploadFilesVariables.push({
+                            fileFieldName: fieldName,
+                            filefieldValues: fieldValue,
+                        });
                     }
                 }
             }
@@ -82,19 +101,20 @@ export class FirestoreDatabase extends BaseDatabase {
                 let uploadFilesTransformedVariablesList: any = [];
                 for (let i = 0; i < filefieldValues.length; i++) {
                     const fieldFieldValue = filefieldValues[i];
-                    if (fieldFieldValue?.uploaded) {
+                    if (fieldFieldValue.uploaded) {
                         uploadFilesTransformedVariablesList.push(fieldFieldValue);
-                    }
-                    else {
+                    } else {
                         const itemFirebaseFile = <FirebaseFile>fieldFieldValue;
-                        const storageRef = sRef(obj.storage);
+                        const storageRef = sRef(firebaseStorage);
                         const fileName = `${resource}/${docId}/${fieldName}-${itemFirebaseFile.name}`;
                         const fileRef = sRef(storageRef, fileName);
                         const result = await uploadBytes(fileRef, itemFirebaseFile.file);
                         const downloadURL = await getDownloadURL(result.ref);
                         const transformedValueItem = {
                             url: downloadURL,
-                            title: itemFirebaseFile?.title ? itemFirebaseFile?.title : itemFirebaseFile.name,
+                            title: itemFirebaseFile?.title
+                                ? itemFirebaseFile?.title
+                                : itemFirebaseFile.name,
                             fileName: fileName,
                             uploadedAt: Date.now(),
                             uploaded: true,
@@ -102,7 +122,8 @@ export class FirestoreDatabase extends BaseDatabase {
                         uploadFilesTransformedVariablesList.push(transformedValueItem);
                     }
                 }
-                uploadFilesTransformedVariables[fieldName] = uploadFilesTransformedVariablesList;
+                uploadFilesTransformedVariables[fieldName] =
+                    uploadFilesTransformedVariablesList;
             })
         );
         return uploadFilesTransformedVariables;
@@ -119,7 +140,11 @@ export class FirestoreDatabase extends BaseDatabase {
         }
     }
 
-    async deleteFolder(resource: string, docId: string, firebaseStorage: FirebaseStorage) {
+    async deleteFolder(
+        resource: string,
+        docId: string,
+        firebaseStorage: FirebaseStorage
+    ) {
         const folderName = `${resource}/${docId}`;
         const folderRef = sRef(firebaseStorage, folderName);
         const storageRefsToDelete = (await listAll(folderRef)).items;
@@ -134,23 +159,33 @@ export class FirestoreDatabase extends BaseDatabase {
         }
     }
 
-    async createData<TVariables = {}>(args: ICreateData<TVariables>): Promise<any> {
+    async createData<TVariables = {}>(
+        args: ICreateData<TVariables>
+    ): Promise<any> {
         try {
             const ref = this.getCollectionRef(args.resource);
-            const payload = this.requestPayloadFactory(args.resource, this.transform(args.variables, args.metaData));
+            const payload = this.requestPayloadFactory(
+                args.resource,
+                this.transform(args.variables, args.metaData)
+            );
             const docRef = await addDoc(ref, payload);
             let data: any;
             if (args.metaData?.files) {
                 // File upload handler
-                const uploadFilesVariables = await this.uploadFiles(args.variables, args.resource, args.metaData, docRef.id, this);
+                const uploadFilesVariables = await this.uploadFiles(
+                    args.variables,
+                    args.resource,
+                    args.metaData,
+                    docRef.id,
+                    this.storage
+                );
                 await updateDoc(docRef, uploadFilesVariables);
                 data = {
                     id: docRef.id,
                     ...payload,
                     ...uploadFilesVariables,
                 };
-            }
-            else {
+            } else {
                 data = {
                     id: docRef.id,
                     ...payload,
@@ -162,7 +197,9 @@ export class FirestoreDatabase extends BaseDatabase {
         }
     }
 
-    async createManyData<TVariables = {}>(args: ICreateData<TVariables>): Promise<any> {
+    async createManyData<TVariables = {}>(
+        args: ICreateData<TVariables>
+    ): Promise<any> {
         try {
             var data = await this.createData(args);
 
@@ -178,8 +215,7 @@ export class FirestoreDatabase extends BaseDatabase {
             await deleteDoc(ref);
             try {
                 await this.deleteFolder(args.resource, args.id, this.storage);
-            }
-            catch (error) {
+            } catch (error) {
                 //No op;
             }
         } catch (error) {
@@ -189,7 +225,7 @@ export class FirestoreDatabase extends BaseDatabase {
 
     async deleteManyData(args: IDeleteManyData): Promise<any> {
         try {
-            args.ids.forEach(async id => {
+            args.ids.forEach(async (id) => {
                 this.deleteData({ resource: args.resource, id });
             });
         } catch (error) {
@@ -206,14 +242,15 @@ export class FirestoreDatabase extends BaseDatabase {
 
             const querySnapshot = await getDocs(ref);
 
-            querySnapshot.forEach(document => {
-                data.push(this.responsePayloadFactory(args.resource, {
-                    id: document.id,
-                    ...document.data()
-                }));
+            querySnapshot.forEach((document) => {
+                data.push(
+                    this.responsePayloadFactory(args.resource, {
+                        id: document.id,
+                        ...document.data(),
+                    })
+                );
             });
             return { data };
-
         } catch (error) {
             Promise.reject(error);
         }
@@ -226,12 +263,14 @@ export class FirestoreDatabase extends BaseDatabase {
 
             const querySnapshot = await getDocs(ref);
 
-            querySnapshot.forEach(document => {
+            querySnapshot.forEach((document) => {
                 if (args.ids.includes(document.id)) {
-                    data.push(this.responsePayloadFactory(args.resource, {
-                        id: document.id,
-                        ...document.data()
-                    }));
+                    data.push(
+                        this.responsePayloadFactory(args.resource, {
+                            id: document.id,
+                            ...document.data(),
+                        })
+                    );
                 }
             });
             return { data };
@@ -247,50 +286,76 @@ export class FirestoreDatabase extends BaseDatabase {
 
                 const docSnap = await getDoc(docRef);
 
-                const data = this.responsePayloadFactory(args.resource, { ...docSnap.data(), id: docSnap.id });
+                const data = this.responsePayloadFactory(args.resource, {
+                    ...docSnap.data(),
+                    id: docSnap.id,
+                });
 
                 return { data };
             }
-
         } catch (error: any) {
             Promise.reject(error);
         }
     }
 
-    async updateData<TVariables = {}>(args: IUpdateData<TVariables>): Promise<any> {
+    async updateData<TVariables = {}>(
+        args: IUpdateData<TVariables>
+    ): Promise<any> {
         try {
             let data: any = { data: args.variables };
             if (args.id && args.resource) {
                 var docRef = this.getDocRef(args.resource, args.id);
-                await updateDoc(docRef, this.requestPayloadFactory(args.resource, this.transform(args.variables, args.metaData)));
-                const filesToDelete: string[] = [];
+                await updateDoc(
+                    docRef,
+                    this.requestPayloadFactory(
+                        args.resource,
+                        this.transform(args.variables, args.metaData)
+                    )
+                );
+                let filesToDelete: string[] = [];
                 if (args.metaData?.files) {
                     const fileFieldNames = args.metaData?.files;
                     // File upload handler
-                    const newUploadedFilesVariables = await this.uploadFiles(args.variables, args.resource, args.metaData, docRef.id, this);
-                    console.log(newUploadedFilesVariables);
+                    const newUploadedFilesVariables = await this.uploadFiles(
+                        args.variables,
+                        args.resource,
+                        args.metaData,
+                        docRef.id,
+                        this.storage
+                    );
                     const docSnap = await getDoc(docRef);
                     const docSnapData = docSnap.data();
                     for (let i = 0; i < fileFieldNames.length; i++) {
                         const fileFieldName = fileFieldNames[i];
-                        filesToDelete.concat(docSnapData[fileFieldName]
-                            .filter(fileFieldValue => {
-                                console.log(newUploadedFilesVariables);
-                                console.log(fileFieldValue);
-                                const x = !newUploadedFilesVariables.includes(fileFieldValue);
-                                return x;
-                            })
-                            .map(fileFieldValue => fileFieldValue.fileName));
+                        filesToDelete = filesToDelete.concat(
+                            docSnapData[fileFieldName]
+                                .flatMap((fileFieldValues) => fileFieldValues)
+                                .filter((fileFieldValue) => {
+                                    const uploadedFiles =
+                                        newUploadedFilesVariables[fileFieldName];
+                                    let toDelete = true;
+                                    for (let j = 0; j < uploadedFiles.length; j++) {
+                                        let uploadedFile = uploadedFiles[i];
+                                        if (
+                                            uploadedFile.uploadedAt === fileFieldValue.uploadedAt &&
+                                            uploadedFile.fileName === fileFieldValue.fileName
+                                        ) {
+                                            toDelete = false;
+                                            break;
+                                        }
+                                    }
+                                    return toDelete;
+                                })
+                                .map((fileFieldValue) => fileFieldValue.fileName)
+                        );
                     }
                     await updateDoc(docRef, newUploadedFilesVariables);
                     data = {
                         ...newUploadedFilesVariables,
                     };
                 }
-                console.log("Files-to-delete");
-                console.log(filesToDelete);
                 if (filesToDelete) {
-                    await this.deleteFiles(args.metaData?.filesToDelete, this.storage);
+                    await this.deleteFiles(filesToDelete, this.storage);
                 }
             }
             return data;
@@ -298,13 +363,17 @@ export class FirestoreDatabase extends BaseDatabase {
             Promise.reject(error);
         }
     }
-    async updateManyData<TVariables = {}>(args: IUpdateManyData<TVariables>): Promise<any> {
+    async updateManyData<TVariables = {}>(
+        args: IUpdateManyData<TVariables>
+    ): Promise<any> {
         try {
-            args.ids.forEach(async id => {
+            args.ids.forEach(async (id) => {
                 var ref = this.getDocRef(args.resource, id);
-                await updateDoc(ref, this.requestPayloadFactory(args.resource, args.variables));
+                await updateDoc(
+                    ref,
+                    this.requestPayloadFactory(args.resource, args.variables)
+                );
             });
-
         } catch (error) {
             Promise.reject(error);
         }
