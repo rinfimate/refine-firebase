@@ -51,9 +51,9 @@ export class FirestoreDatabase extends BaseDatabase {
             const originalVariables = variables;
             const transformedVariables: any = {};
             for (var fieldName in originalVariables) {
-                const fieldValue = originalVariables[fieldName];
+                const fieldValues = originalVariables[fieldName];
                 if (!meta?.files.includes(fieldName)) {
-                    transformedVariables[fieldName] = fieldValue;
+                    transformedVariables[fieldName] = fieldValues;
                 }
             }
             return transformedVariables;
@@ -71,29 +71,36 @@ export class FirestoreDatabase extends BaseDatabase {
                 const fieldValue = originalVariables[fieldName];
                 if (fieldValue) {
                     if (meta?.files.includes(fieldName)) {
-                        uploadFilesVariables.push({ fieldName: fieldName, fieldValue: fieldValue });
+                        uploadFilesVariables.push({ fileFieldName: fieldName, filefieldValues: fieldValue });
                     }
                 }
             }
         }
         const uploadFilesTransformedVariables: any = {};
         await Promise.all(
-            uploadFilesVariables.map(async ({ fieldName, fieldValue }) => {
+            uploadFilesVariables.map(async ({ fileFieldName, filefieldValues }) => {
                 let uploadFilesTransformedVariablesList: any = [];
-                for (let i = 0; i < fieldValue.length; i++) {
-                    const itemFirebaseFile = <FirebaseFile>fieldValue[i];
-                    const storageRef = sRef(obj.storage);
-                    const fileName = `${resource}/${docId}/${fieldName}-${itemFirebaseFile.name}`;
-                    const fileRef = sRef(storageRef, fileName);
-                    const result = await uploadBytes(fileRef, itemFirebaseFile.file);
-                    const downloadURL = await getDownloadURL(result.ref);
-                    const transformedValueItem = {
-                        url: downloadURL,
-                        title: itemFirebaseFile?.title ? itemFirebaseFile?.title : itemFirebaseFile.name,
-                        fileName: fileName,
-                        uploadedAt: Date.now(),
-                    };
-                    uploadFilesTransformedVariablesList.push(transformedValueItem)
+                for (let i = 0; i < filefieldValues.length; i++) {
+                    const fieldFieldValue = filefieldValues[i];
+                    if (fieldFieldValue?.uploaded) {
+                        uploadFilesTransformedVariablesList.push(fieldFieldValue);
+                    }
+                    else {
+                        const itemFirebaseFile = <FirebaseFile>fieldFieldValue;
+                        const storageRef = sRef(obj.storage);
+                        const fileName = `${resource}/${docId}/${fieldName}-${itemFirebaseFile.name}`;
+                        const fileRef = sRef(storageRef, fileName);
+                        const result = await uploadBytes(fileRef, itemFirebaseFile.file);
+                        const downloadURL = await getDownloadURL(result.ref);
+                        const transformedValueItem = {
+                            url: downloadURL,
+                            title: itemFirebaseFile?.title ? itemFirebaseFile?.title : itemFirebaseFile.name,
+                            fileName: fileName,
+                            uploadedAt: Date.now(),
+                            uploaded: true,
+                        };
+                        uploadFilesTransformedVariablesList.push(transformedValueItem);
+                    }
                 }
                 uploadFilesTransformedVariables[fieldName] = uploadFilesTransformedVariablesList;
             })
@@ -254,17 +261,35 @@ export class FirestoreDatabase extends BaseDatabase {
         try {
             let data: any = { data: args.variables };
             if (args.id && args.resource) {
-                var ref = this.getDocRef(args.resource, args.id);
-                await updateDoc(ref, this.requestPayloadFactory(args.resource, this.transform(args.variables, args.metaData)));
+                var docRef = this.getDocRef(args.resource, args.id);
+                await updateDoc(docRef, this.requestPayloadFactory(args.resource, this.transform(args.variables, args.metaData)));
+                const filesToDelete: string[] = [];
                 if (args.metaData?.files) {
+                    const fileFieldNames = args.metaData?.files;
                     // File upload handler
-                    const uploadFilesVariables = await this.uploadFiles(args.variables, args.resource, args.metaData, ref.id, this);
-                    await updateDoc(ref, uploadFilesVariables);
+                    const newUploadedFilesVariables = await this.uploadFiles(args.variables, args.resource, args.metaData, docRef.id, this);
+                    console.log(newUploadedFilesVariables);
+                    const docSnap = await getDoc(docRef);
+                    const docSnapData = docSnap.data();
+                    for (let i = 0; i < fileFieldNames.length; i++) {
+                        const fileFieldName = fileFieldNames[i];
+                        filesToDelete.concat(docSnapData[fileFieldName]
+                            .filter(fileFieldValue => {
+                                console.log(newUploadedFilesVariables);
+                                console.log(fileFieldValue);
+                                const x = !newUploadedFilesVariables.includes(fileFieldValue);
+                                return x;
+                            })
+                            .map(fileFieldValue => fileFieldValue.fileName));
+                    }
+                    await updateDoc(docRef, newUploadedFilesVariables);
                     data = {
-                        ...uploadFilesVariables,
+                        ...newUploadedFilesVariables,
                     };
                 }
-                if (args.metaData?.filesToDelete) {
+                console.log("Files-to-delete");
+                console.log(filesToDelete);
+                if (filesToDelete) {
                     await this.deleteFiles(args.metaData?.filesToDelete, this.storage);
                 }
             }
