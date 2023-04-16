@@ -335,7 +335,7 @@ export class FirestoreDatabase extends BaseDatabase {
                                         newUploadedFilesVariables[fileFieldName];
                                     let toDelete = true;
                                     for (let j = 0; j < uploadedFiles.length; j++) {
-                                        let uploadedFile = uploadedFiles[i];
+                                        let uploadedFile = uploadedFiles[j];
                                         if (
                                             uploadedFile.uploadedAt === fileFieldValue.uploadedAt &&
                                             uploadedFile.fileName === fileFieldValue.fileName
