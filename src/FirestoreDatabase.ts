@@ -1,5 +1,6 @@
-import { Firestore, getDocs, getFirestore, collection, addDoc, doc, getDoc, updateDoc, deleteDoc, where, query, CollectionReference, DocumentData, Query, orderBy } from "firebase/firestore";
+import { Firestore, getDocs, getFirestore, collection, addDoc, doc, getDoc, updateDoc, deleteDoc, where, query, CollectionReference, DocumentData, Query, orderBy, serverTimestamp } from "firebase/firestore";
 import { FirebaseStorage, getDownloadURL, uploadBytes, getStorage, deleteObject, listAll, ref as sRef } from "firebase/storage";
+import { getAuth } from "firebase/auth";
 import { ICreateData, IDeleteData, IDeleteManyData, IGetList, IGetMany, IGetOne, IDatabaseOptions, IUpdateData, IUpdateManyData, CrudOperators } from "./interfaces";
 import { BaseDatabase } from "./Database";
 import { FirebaseFile } from "./interfaces";
@@ -106,7 +107,7 @@ export class FirestoreDatabase extends BaseDatabase {
                     } else {
                         const itemFirebaseFile = <FirebaseFile>fieldFieldValue;
                         const storageRef = sRef(firebaseStorage);
-                        const fileName = `${resource}/${docId}/${fieldName}-${itemFirebaseFile.name}`;
+                        const fileName = `${resource}/${docId}/${fileFieldName}-${itemFirebaseFile.name}`;
                         const fileRef = sRef(storageRef, fileName);
                         const result = await uploadBytes(fileRef, itemFirebaseFile.file);
                         const downloadURL = await getDownloadURL(result.ref);
@@ -122,7 +123,7 @@ export class FirestoreDatabase extends BaseDatabase {
                         uploadFilesTransformedVariablesList.push(transformedValueItem);
                     }
                 }
-                uploadFilesTransformedVariables[fieldName] =
+                uploadFilesTransformedVariables[fileFieldName] =
                     uploadFilesTransformedVariablesList;
             })
         );
@@ -168,6 +169,14 @@ export class FirestoreDatabase extends BaseDatabase {
                 args.resource,
                 this.transform(args.variables, args.metaData)
             );
+            payload['createdAt'] = Date.now();
+            payload['updatedAt'] = Date.now();
+            const auth = getAuth();
+            const user = auth.currentUser;
+            if (user) {
+                payload['createdBy'] = user.uid;
+                payload['updatedBy'] = user.uid;
+            }
             const docRef = await addDoc(ref, payload);
             let data: any;
             if (args.metaData?.files) {
@@ -305,12 +314,20 @@ export class FirestoreDatabase extends BaseDatabase {
             let data: any = { data: args.variables };
             if (args.id && args.resource) {
                 var docRef = this.getDocRef(args.resource, args.id);
+                const payload = this.requestPayloadFactory(
+                    args.resource,
+                    this.transform(args.variables, args.metaData)
+                )
+                payload['updatedAt'] = Date.now();
+                const auth = getAuth();
+                const user = auth.currentUser;
+                if (user) {
+                    payload['updatedBy'] = user.uid;
+
+                }
                 await updateDoc(
                     docRef,
-                    this.requestPayloadFactory(
-                        args.resource,
-                        this.transform(args.variables, args.metaData)
-                    )
+                    payload
                 );
                 let filesToDelete: string[] = [];
                 if (args.metaData?.files) {

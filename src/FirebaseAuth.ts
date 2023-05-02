@@ -1,6 +1,6 @@
 import { FirebaseApp } from "@firebase/app";
 import { AuthBindings } from "@refinedev/core";
-import { Auth, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, getAuth, getIdTokenResult, ParsedToken, RecaptchaParameters, RecaptchaVerifier, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPhoneNumber, signOut, updateEmail, updatePassword, updateProfile, ConfirmationResult, User as FirebaseUser } from "firebase/auth";
+import { Auth, browserLocalPersistence, browserSessionPersistence, createUserWithEmailAndPassword, getAuth, getIdTokenResult, ParsedToken, RecaptchaParameters, RecaptchaVerifier, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPhoneNumber, signOut, updateEmail, updatePassword, updateProfile, ConfirmationResult, onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import { ILoginArgs, IPhoneOTPRequestArgs, IPhoneOTPLoginArgs, IRegisterArgs } from "./interfaces";
 
 export class FirebaseAuth {
@@ -256,31 +256,61 @@ export class FirebaseAuth {
     }
 
     public async getUserIdentity() {
-        const user = this.auth?.currentUser;
-        if (user) {
-            return {
-                ...this.auth.currentUser,
-                id: user?.email || "",
-                name: user?.displayName || "",
-                avatar: user?.photoURL || ""
-            };
-        } else {
-            return null;
-        }
+        return new Promise((resolve, reject) => {
+            const auth = this.auth;
+            if (auth.currentUser) {
+                const userObject = {
+                    ...auth.currentUser,
+                    id: auth.currentUser?.email || "",
+                    name: auth.currentUser?.displayName || "",
+                    avatar: auth.currentUser?.photoURL || ""
+                };
+                return resolve(userObject);
+            }
+            const unsubscribe = onAuthStateChanged(this.auth, (user) => {
+                unsubscribe();
+                if (user) {
+                    const userObject = {
+                        ...user,
+                        id: user?.email || "",
+                        name: user?.displayName || "",
+                        avatar: user?.photoURL || ""
+                    };
+                    resolve(userObject);
+                } else {
+                    reject(null);
+                }
+            });
+        });
     }
 
     public async getPhoneUserIdentity() {
-        const user = this.auth?.currentUser;
-        if (user) {
-            return {
-                ...this.auth.currentUser,
-                id: user?.phoneNumber || "",
-                name: user?.displayName || "",
-                avatar: user?.photoURL || ""
-            };
-        } else {
-            return null;
-        }
+        return new Promise((resolve, reject) => {
+            const auth = this.auth;
+            if (auth.currentUser) {
+                const userObject = {
+                    ...auth.currentUser,
+                    id: auth.currentUser?.phoneNumber || "",
+                    name: auth.currentUser?.displayName || "",
+                    avatar: auth.currentUser?.photoURL || ""
+                };
+                return resolve(userObject);
+            }
+            const unsubscribe = onAuthStateChanged(this.auth, (user) => {
+                unsubscribe();
+                if (user) {
+                    const userObject = {
+                        ...user,
+                        id: user?.phoneNumber || "",
+                        name: user?.displayName || "",
+                        avatar: user?.photoURL || ""
+                    };
+                    resolve(userObject);
+                } else {
+                    reject(null);
+                }
+            });
+        });
     }
 
     public async getAuthObject() {
